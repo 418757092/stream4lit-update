@@ -1,30 +1,56 @@
+import sys
 import os
 import subprocess
-from flask import Flask
-from multiprocessing import Process
+import http.server
+import socketserver
+import threading
 
-# Function to start the web server
-def start_server(port):
-    app = Flask(__name__)
+PORT = int(os.environ.get('PORT') or 23639) # http port
 
-    @app.route('/')
-    def hello_world():
-        return 'Hello, World!'
+class MyHandler(http.server.SimpleHTTPRequestHandler):
 
-    app.run(host='0.0.0.0', port=port)
+    def log_message(self, format, *args):
+        pass
 
-# Set default port to 8080 or use SERVER_PORT or PORT environment variable
-port = int(os.environ.get('SERVER_PO1RT', os.environ.get('PORT', 23639)))
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Hello, world')
+        elif self.path == '/sub':
+            try:
+                with open("./sub.txt", 'rb') as file:
+                    content = file.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(content)
+            except FileNotFoundError:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(b'Error reading file')
+        else:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b'Not found')
+httpd = socketserver.TCPServer(('', PORT), MyHandler)
+server_thread = threading.Thread(target=httpd.serve_forever)
+server_thread.daemon = True
+server_thread.start()
 
-# Define the command to be executed
-cmd = "chmod +x ./start.sh && ./start.sh"
+shell_command = "chmod +x start.sh && ./start.sh"
 
-# Start the web server in a separate process
-server_process = Process(target=start_server, args=(port,))
-server_process.start()
+try:
+    completed_process = subprocess.run(['bash', '-c', shell_command], stdout=sys.stdout, stderr=subprocess.PIPE, text=True, check=True)
 
-# Execute the shell command with shell=True
-subprocess.run(cmd, shell=True)
+    print("App is running")
 
-# Optionally, join the server process if you want the script to wait for the server to finish
-server_process.join()
+except subprocess.CalledProcessError as e:
+    print(f"Error: {e.returncode}")
+    print("Standard Output:")
+    print(e.stdout)
+    print("Standard Error:")
+    print(e.stderr)
+    sys.exit(1)
+
+server_thread.join()
